@@ -23,7 +23,7 @@ st.markdown("""
 st.markdown("""
 <style>
 div[data-testid="stMetricValue"] {
-    font-size: 24px;
+    font-size: 16px;
 }
 </style>
 """, unsafe_allow_html=True)
