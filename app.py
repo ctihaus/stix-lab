@@ -21,6 +21,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("""
+<style>
+div[data-testid="stMetricValue"] {
+    font-size: 24px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
 <div class="hero">
   <h1>🧩 STIX Lab</h1>
   <p>Aprende. Convierte. Valida. Una herramienta práctica para crear reportes STIX 2.1 de mejor calidad.</p>
