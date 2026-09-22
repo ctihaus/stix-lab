@@ -30,7 +30,7 @@ div[data-testid="stMetricValue"] {
 
 st.markdown("""
 <div class="hero">
-  <h1>🧩 STIX Lab</h1>
+  <h1>🧩 STIX Lab Demo</h1>
   <p>Aprende. Convierte. Valida. Una herramienta práctica para crear reportes STIX 2.1 de mejor calidad.</p>
 </div>
 """, unsafe_allow_html=True)
