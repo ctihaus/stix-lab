@@ -162,7 +162,8 @@ WIKI_OBJECTS = {
         "summary": "Representa un patrón que puede utilizarse para detectar actividad sospechosa o maliciosa.",
         "use": "Úsalo para expresar algo que pueda buscarse o detectarse: IP, dominio, URL, hash u otro patrón.",
         "properties": [("name","string","Nombre legible."),("description","string","Descripción."),("indicator_types","list[open-vocab]","Clasificación."),("pattern","string","Patrón de detección."),("pattern_type","open-vocab","Lenguaje del patrón."),("pattern_version","string","Versión del lenguaje."),("valid_from","timestamp","Inicio de validez."),("valid_until","timestamp","Fin de validez."),("kill_chain_phases","list","Fases relacionadas.")],
-        "required": ["type","spec_version","id","created","modified","pattern","pattern_type","valid_from"], "recommended": ["name","description","confidence","labels / x_severity"],
+        "required": ["type","spec_version","id","created","modified","pattern","pattern_type","valid_from"], 
+        "recommended": ["name","description","labels / x_severity"],
         "example": _sdo("indicator","11111111-1111-4111-8111-111111111111","Dominio malicioso",description="Dominio identificado durante monitoreo de tráfico.",pattern="[domain-name:value = 'malicious-example.com']",pattern_type="stix",valid_from="2026-09-22T12:00:00.000Z",confidence=70,labels=["severity:medium"]),
     },
     "Infrastructure": {
