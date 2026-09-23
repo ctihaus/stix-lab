@@ -446,8 +446,7 @@ WIKI_OBJECTS = {
         "use": "Úsalo para aplicar una declaración de uso o una definición de marcado soportada por STIX.",
         "properties": [("name","string","Nombre opcional."),("definition_type","open-vocab","Tipo de definición; en STIX 2.1 esta forma está deprecada para nuevas extensiones."),("definition","object","Contenido de la definición, por ejemplo statement o tlp."),("extensions","dictionary","Mecanismo recomendado para nuevos tipos de marcado.")],
         "required": ["type","spec_version","id","created"], "recommended": ["name"],
-        "example": {
-            "type":"marking-definition","spec_version":"2.1","id":"marking-definition--4a0042fe-8b88-40fe-9600-dfa128ce6fbd","created":"2026-09-22T12:00:00Z","definition_type":"statement","definition":{"statement":"Uso exclusivo para intercambio autorizado entre participantes."}
+        "example": {"type": "marking-definition","spec_version": "2.1","id": "marking-definition--f88d31f6-486f-44da-b317-01333bde0b82","created":"2026-09-22T12:00:00Z","definition_type": "tlp","name": "TLP:AMBER","definition": {"tlp": "amber"}
         },
         "note": "Para TLP, STIX 2.1 exige usar las definiciones estándar establecidas por la especificación; no se deben crear IDs TLP arbitrarios.",
     },
