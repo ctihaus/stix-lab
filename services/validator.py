@@ -1,6 +1,11 @@
 import json
 from stix2validator import validate_string
 
+def _format_issue(issue):
+    if hasattr(issue, "message"):
+        return str(issue.message)
+    return str(issue)
+
 def validate_stix_text(text: str):
     response = {
         "json_ok": False,
