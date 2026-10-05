@@ -31,31 +31,6 @@ SDO_TYPES_REQUIRING_NAME_DESCRIPTION = {
 }
 
 
-# Objetos donde confidence puede ser relevante
-CONFIDENCE_RELEVANT_TYPES = {
-    "attack-pattern",
-    "campaign",
-    "course-of-action",
-    "grouping",
-    "identity",
-    "incident",
-    "indicator",
-    "infrastructure",
-    "intrusion-set",
-    "malware",
-    "malware-analysis",
-    "note",
-    "observed-data",
-    "opinion",
-    "report",
-    "threat-actor",
-    "tool",
-    "vulnerability",
-    "relationship",
-    "sighting",
-}
-
-
 # ============================================================
 # HELPERS
 # ============================================================
@@ -407,121 +382,85 @@ def _validate_description_grouped(objects):
 # ============================================================
 # CONFIDENCE GLOBAL
 # ============================================================
-
 def _validate_confidence_grouped(objects):
+    """
+    Valida confidence solamente cuando la propiedad está presente.
 
-    applicable_objects = [
-        obj
-        for obj in objects
-        if obj.get("type")
-        in CONFIDENCE_RELEVANT_TYPES
-    ]
+    En STIX 2.1 confidence es opcional, por lo que su ausencia
+    no genera advertencia.
 
-    if not applicable_objects:
-        return []
+    Si está presente:
+        - debe ser integer
+        - debe estar entre 0 y 100
+    """
 
-    missing = []
+    present = []
     invalid = []
-    valid = []
 
-    for obj in applicable_objects:
+    for obj in objects:
 
         obj_id = _object_id(obj)
 
-        # ----------------------------------------------------
-        # No existe
-        # ----------------------------------------------------
-
+        # Confidence no está presente:
+        # no se valida y no genera warning.
         if "confidence" not in obj:
-
-            missing.append(obj_id)
             continue
 
         confidence = obj.get("confidence")
 
-        # ----------------------------------------------------
-        # Existe y es válido
-        # ----------------------------------------------------
-
+        # Confidence válido
         if (
             isinstance(confidence, int)
             and not isinstance(confidence, bool)
             and 0 <= confidence <= 100
         ):
+            present.append(obj_id)
 
-            valid.append(obj_id)
-
-        # ----------------------------------------------------
-        # Existe pero es inválido
-        # ----------------------------------------------------
-
+        # Confidence presente pero inválido
         else:
-
             invalid.append(obj_id)
 
-    total = len(applicable_objects)
-
     # ========================================================
-    # Confidence inválido
+    # Valores inválidos
     # ========================================================
 
     if invalid:
-
-        affected = invalid + missing
-
-        message = (
-            f"{len(invalid)} de {total} objetos contienen "
-            "un valor de confidence inválido."
-        )
-
-        if missing:
-
-            message += (
-                f" Además, {len(missing)} objetos "
-                "no contienen confidence."
-            )
 
         return [{
             "level": "error",
             "object": "Reporte STIX",
             "rule": "Confidence",
-            "message": message,
-            "affected": affected,
+            "message": (
+                f"{len(invalid)} objeto(s) contienen un valor de "
+                "confidence inválido. El valor debe ser un número "
+                "entero entre 0 y 100."
+            ),
+            "affected": invalid,
         }]
 
     # ========================================================
-    # Confidence ausente
+    # Hay confidence y todos son válidos
     # ========================================================
 
-    if missing:
+    if present:
 
         return [{
-            "level": "warning",
+            "level": "ok",
             "object": "Reporte STIX",
             "rule": "Confidence",
             "message": (
-                f"{len(missing)} de {total} objetos evaluados "
-                "no contienen confidence. "
-                "Se recomienda incluir un valor entre 0 y 100 "
-                "cuando sea posible."
+                f"Todos los valores de confidence encontrados "
+                f"({len(present)}) son válidos."
             ),
-            "affected": missing,
+            "affected": [],
         }]
 
     # ========================================================
-    # Todos correctos
+    # No existe confidence en ningún objeto
+    # No genera advertencia porque es opcional
     # ========================================================
 
-    return [{
-        "level": "ok",
-        "object": "Reporte STIX",
-        "rule": "Confidence",
-        "message": (
-            f"Todos los objetos evaluados ({total}) "
-            "contienen un confidence válido."
-        ),
-        "affected": [],
-    }]
+    return []
 
 
 # ============================================================
