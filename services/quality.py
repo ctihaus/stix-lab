@@ -12,11 +12,7 @@ VALID_SEVERITIES = {
 }
 
 
-# Objetos en los que queremos aplicar la regla institucional
-# de Name + Description.
-#
-# Se excluyen SCO, SRO y objetos STIX que normalmente no utilizan
-# estas propiedades de la misma forma.
+# Objetos para los cuales se requiere Name + Description
 SDO_TYPES_REQUIRING_NAME_DESCRIPTION = {
     "attack-pattern",
     "campaign",
@@ -35,7 +31,7 @@ SDO_TYPES_REQUIRING_NAME_DESCRIPTION = {
 }
 
 
-# Tipos para los cuales confidence puede aportar contexto.
+# Objetos donde confidence puede ser relevante
 CONFIDENCE_RELEVANT_TYPES = {
     "attack-pattern",
     "campaign",
@@ -66,12 +62,12 @@ CONFIDENCE_RELEVANT_TYPES = {
 
 def _objects(payload):
     """
-    Devuelve los objetos STIX que deben ser evaluados.
+    Devuelve los objetos STIX a evaluar.
 
-    Si payload es un Bundle:
+    Bundle:
         devuelve payload["objects"]
 
-    Si payload es un objeto individual:
+    Objeto individual:
         devuelve [payload]
     """
 
@@ -79,6 +75,7 @@ def _objects(payload):
         return []
 
     if payload.get("type") == "bundle":
+
         objects = payload.get("objects", [])
 
         if isinstance(objects, list):
@@ -94,9 +91,6 @@ def _objects(payload):
 
 
 def _payload_id(payload):
-    """
-    Obtiene un identificador para mostrar en las reglas globales.
-    """
 
     if isinstance(payload, dict):
         return payload.get("id", "STIX")
@@ -105,9 +99,6 @@ def _payload_id(payload):
 
 
 def _object_id(obj):
-    """
-    Obtiene el ID del objeto o un texto alternativo.
-    """
 
     if not isinstance(obj, dict):
         return "objeto"
@@ -120,21 +111,17 @@ def _object_id(obj):
 
 def _get_severity_values(obj):
     """
-    Busca severity dentro de un objeto STIX.
+    Busca severity en:
 
-    Formatos soportados:
+    x_severity
 
-    1. x_severity
-       "x_severity": "High"
+    x_*_severity
+    Ej:
+        x_sprics_severity
 
-    2. Propiedades personalizadas terminadas en _severity
-       "x_sprics_severity": "Medium"
-       "x_company_severity": "Critical"
-
-    3. labels
-       "labels": ["severity:medium"]
-
-    Devuelve una lista con los valores encontrados.
+    labels
+    Ej:
+        labels: ["severity:medium"]
     """
 
     values = []
@@ -142,21 +129,18 @@ def _get_severity_values(obj):
     if not isinstance(obj, dict):
         return values
 
-    # --------------------------------------------------------
+    # ========================================================
     # x_severity
-    # --------------------------------------------------------
+    # ========================================================
 
     value = obj.get("x_severity")
 
     if isinstance(value, str) and value.strip():
         values.append(value.strip())
 
-    # --------------------------------------------------------
-    # Custom properties:
-    # x_sprics_severity
-    # x_company_severity
-    # etc.
-    # --------------------------------------------------------
+    # ========================================================
+    # x_*_severity
+    # ========================================================
 
     for key, value in obj.items():
 
@@ -172,9 +156,9 @@ def _get_severity_values(obj):
         ):
             values.append(value.strip())
 
-    # --------------------------------------------------------
-    # labels: ["severity:medium"]
-    # --------------------------------------------------------
+    # ========================================================
+    # labels
+    # ========================================================
 
     labels = obj.get("labels", [])
 
@@ -195,24 +179,12 @@ def _get_severity_values(obj):
     return values
 
 
+# ============================================================
+# SP-1
+# SEVERITY GLOBAL
+# ============================================================
+
 def _validate_severity_global(payload, objects):
-    """
-    SP-1
-
-    Severity se evalúa UNA SOLA VEZ para todo el reporte.
-
-    Reglas:
-
-    - Debe existir al menos una severity en el STIX.
-    - No es obligatorio tener severity en cada objeto.
-    - Los valores permitidos son:
-        Medium
-        High
-        Critical
-    - La validación es case-insensitive.
-    """
-
-    results = []
 
     severity_values = []
 
@@ -224,23 +196,21 @@ def _validate_severity_global(payload, objects):
     report_id = _payload_id(payload)
 
     # --------------------------------------------------------
-    # No existe severity en ningún objeto
+    # No existe severity
     # --------------------------------------------------------
 
     if not severity_values:
 
-        results.append({
+        return [{
             "level": "warning",
             "object": report_id,
-            "rule": "SP-1 / severity",
+            "rule": "SP-1 / Severity",
             "message": (
                 "No se encontró severidad en el reporte STIX. "
-                "Se espera uno de los siguientes valores: "
-                "Medium, High o Critical."
+                "Se espera Medium, High o Critical."
             ),
-        })
-
-        return results
+            "affected": [],
+        }]
 
     # --------------------------------------------------------
     # Buscar valores inválidos
@@ -259,209 +229,299 @@ def _validate_severity_global(payload, objects):
             key=str.lower
         )
 
-        results.append({
+        return [{
             "level": "error",
             "object": report_id,
-            "rule": "SP-1 / severity",
+            "rule": "SP-1 / Severity",
             "message": (
                 "Se encontraron valores de severidad no válidos: "
                 f"{', '.join(invalid_unique)}. "
-                "Los valores permitidos son "
-                "Medium, High o Critical."
+                "Los valores permitidos son Medium, High o Critical."
             ),
-        })
-
-        return results
+            "affected": [],
+        }]
 
     # --------------------------------------------------------
-    # Todas las severidades encontradas son válidas
+    # Severity correcta
     # --------------------------------------------------------
 
-    normalized_values = {
+    normalized = {
         value.lower()
         for value in severity_values
     }
 
-    display_order = [
-        severity.capitalize()
-        for severity in (
+    display_values = [
+        value.capitalize()
+        for value in (
             "medium",
             "high",
-            "critical"
+            "critical",
         )
-        if severity in normalized_values
+        if value in normalized
     ]
 
-    results.append({
+    return [{
         "level": "ok",
         "object": report_id,
-        "rule": "SP-1 / severity",
+        "rule": "SP-1 / Severity",
         "message": (
             "Severidad presente y válida: "
-            f"{', '.join(display_order)}."
+            f"{', '.join(display_values)}."
         ),
-    })
+        "affected": [],
+    }]
 
-    return results
 
+# ============================================================
+# SP-2
+# NAME GLOBAL
+# ============================================================
 
-def _validate_name_description(obj):
-    """
-    SP-2
+def _validate_name_grouped(objects):
 
-    Evalúa Name y Description únicamente para los tipos
-    definidos en SDO_TYPES_REQUIRING_NAME_DESCRIPTION.
-    """
+    applicable_objects = [
+        obj
+        for obj in objects
+        if obj.get("type")
+        in SDO_TYPES_REQUIRING_NAME_DESCRIPTION
+    ]
 
-    results = []
+    if not applicable_objects:
+        return []
 
-    if not isinstance(obj, dict):
-        return results
+    missing = []
 
-    obj_type = obj.get("type", "desconocido")
-    obj_id = _object_id(obj)
+    for obj in applicable_objects:
 
-    if obj_type not in SDO_TYPES_REQUIRING_NAME_DESCRIPTION:
-        return results
+        name = obj.get("name")
+
+        if not (
+            isinstance(name, str)
+            and name.strip()
+        ):
+            missing.append(
+                _object_id(obj)
+            )
+
+    total = len(applicable_objects)
 
     # --------------------------------------------------------
-    # NAME
+    # Todos correctos
     # --------------------------------------------------------
 
-    name = obj.get("name")
+    if not missing:
 
-    name_present = (
-        isinstance(name, str)
-        and bool(name.strip())
-    )
-
-    if name_present:
-
-        results.append({
+        return [{
             "level": "ok",
-            "object": obj_id,
-            "rule": "SP-2 / name",
-            "message": "Nombre presente.",
-        })
-
-    else:
-
-        results.append({
-            "level": "error",
-            "object": obj_id,
-            "rule": "SP-2 / name",
+            "object": "Reporte STIX",
+            "rule": "SP-2 / Name",
             "message": (
-                "El objeto debe incluir la propiedad "
-                "'name' con contenido."
+                f"Todos los objetos evaluados ({total}) "
+                "contienen nombre."
             ),
-        })
+            "affected": [],
+        }]
 
     # --------------------------------------------------------
-    # DESCRIPTION
+    # Objetos sin name
     # --------------------------------------------------------
 
-    description = obj.get("description")
+    return [{
+        "level": "error",
+        "object": "Reporte STIX",
+        "rule": "SP-2 / Name",
+        "message": (
+            f"{len(missing)} de {total} objetos evaluados "
+            "no contienen la propiedad 'name' con contenido."
+        ),
+        "affected": missing,
+    }]
 
-    description_present = (
-        isinstance(description, str)
-        and bool(description.strip())
-    )
 
-    if description_present:
+# ============================================================
+# SP-2
+# DESCRIPTION GLOBAL
+# ============================================================
 
-        results.append({
+def _validate_description_grouped(objects):
+
+    applicable_objects = [
+        obj
+        for obj in objects
+        if obj.get("type")
+        in SDO_TYPES_REQUIRING_NAME_DESCRIPTION
+    ]
+
+    if not applicable_objects:
+        return []
+
+    missing = []
+
+    for obj in applicable_objects:
+
+        description = obj.get("description")
+
+        if not (
+            isinstance(description, str)
+            and description.strip()
+        ):
+            missing.append(
+                _object_id(obj)
+            )
+
+    total = len(applicable_objects)
+
+    # --------------------------------------------------------
+    # Todos correctos
+    # --------------------------------------------------------
+
+    if not missing:
+
+        return [{
             "level": "ok",
-            "object": obj_id,
-            "rule": "SP-2 / description",
-            "message": "Descripción presente.",
-        })
-
-    else:
-
-        results.append({
-            "level": "error",
-            "object": obj_id,
-            "rule": "SP-2 / description",
+            "object": "Reporte STIX",
+            "rule": "SP-2 / Description",
             "message": (
-                "El objeto debe incluir la propiedad "
-                "'description' con contenido."
+                f"Todos los objetos evaluados ({total}) "
+                "contienen descripción."
             ),
-        })
-
-    return results
-
-
-def _validate_confidence(obj):
-    """
-    Confidence es una recomendación de calidad.
-
-    - Si existe, debe estar entre 0 y 100.
-    - Si no existe, genera advertencia.
-    """
-
-    results = []
-
-    if not isinstance(obj, dict):
-        return results
-
-    obj_type = obj.get("type", "")
-    obj_id = _object_id(obj)
-
-    if obj_type not in CONFIDENCE_RELEVANT_TYPES:
-        return results
+            "affected": [],
+        }]
 
     # --------------------------------------------------------
-    # Confidence no existe
+    # Objetos sin description
     # --------------------------------------------------------
 
-    if "confidence" not in obj:
+    return [{
+        "level": "error",
+        "object": "Reporte STIX",
+        "rule": "SP-2 / Description",
+        "message": (
+            f"{len(missing)} de {total} objetos evaluados "
+            "no contienen la propiedad 'description' con contenido."
+        ),
+        "affected": missing,
+    }]
 
-        results.append({
+
+# ============================================================
+# CONFIDENCE GLOBAL
+# ============================================================
+
+def _validate_confidence_grouped(objects):
+
+    applicable_objects = [
+        obj
+        for obj in objects
+        if obj.get("type")
+        in CONFIDENCE_RELEVANT_TYPES
+    ]
+
+    if not applicable_objects:
+        return []
+
+    missing = []
+    invalid = []
+    valid = []
+
+    for obj in applicable_objects:
+
+        obj_id = _object_id(obj)
+
+        # ----------------------------------------------------
+        # No existe
+        # ----------------------------------------------------
+
+        if "confidence" not in obj:
+
+            missing.append(obj_id)
+            continue
+
+        confidence = obj.get("confidence")
+
+        # ----------------------------------------------------
+        # Existe y es válido
+        # ----------------------------------------------------
+
+        if (
+            isinstance(confidence, int)
+            and not isinstance(confidence, bool)
+            and 0 <= confidence <= 100
+        ):
+
+            valid.append(obj_id)
+
+        # ----------------------------------------------------
+        # Existe pero es inválido
+        # ----------------------------------------------------
+
+        else:
+
+            invalid.append(obj_id)
+
+    total = len(applicable_objects)
+
+    # ========================================================
+    # Confidence inválido
+    # ========================================================
+
+    if invalid:
+
+        affected = invalid + missing
+
+        message = (
+            f"{len(invalid)} de {total} objetos contienen "
+            "un valor de confidence inválido."
+        )
+
+        if missing:
+
+            message += (
+                f" Además, {len(missing)} objetos "
+                "no contienen confidence."
+            )
+
+        return [{
+            "level": "error",
+            "object": "Reporte STIX",
+            "rule": "Confidence",
+            "message": message,
+            "affected": affected,
+        }]
+
+    # ========================================================
+    # Confidence ausente
+    # ========================================================
+
+    if missing:
+
+        return [{
             "level": "warning",
-            "object": obj_id,
-            "rule": "confidence",
+            "object": "Reporte STIX",
+            "rule": "Confidence",
             "message": (
-                "Se recomienda incluir confidence "
-                "(valor entre 0 y 100) cuando sea posible."
+                f"{len(missing)} de {total} objetos evaluados "
+                "no contienen confidence. "
+                "Se recomienda incluir un valor entre 0 y 100 "
+                "cuando sea posible."
             ),
-        })
+            "affected": missing,
+        }]
 
-        return results
+    # ========================================================
+    # Todos correctos
+    # ========================================================
 
-    # --------------------------------------------------------
-    # Confidence existe
-    # --------------------------------------------------------
-
-    confidence = obj.get("confidence")
-
-    if (
-        isinstance(confidence, int)
-        and not isinstance(confidence, bool)
-        and 0 <= confidence <= 100
-    ):
-
-        results.append({
-            "level": "ok",
-            "object": obj_id,
-            "rule": "confidence",
-            "message": (
-                f"Confidence válido: {confidence}."
-            ),
-        })
-
-    else:
-
-        results.append({
-            "level": "error",
-            "object": obj_id,
-            "rule": "confidence",
-            "message": (
-                "Confidence debe ser un número entero "
-                "entre 0 y 100."
-            ),
-        })
-
-    return results
+    return [{
+        "level": "ok",
+        "object": "Reporte STIX",
+        "rule": "Confidence",
+        "message": (
+            f"Todos los objetos evaluados ({total}) "
+            "contienen un confidence válido."
+        ),
+        "affected": [],
+    }]
 
 
 # ============================================================
@@ -470,34 +530,20 @@ def _validate_confidence(obj):
 
 def run_quality_checks(payload):
     """
-    Ejecuta las reglas de calidad institucionales.
+    Ejecuta las reglas de calidad de manera AGRUPADA.
 
-    Puede recibir:
-
-    - dict de Python
-    - string JSON
-    - Bundle STIX
-    - objeto STIX individual
-
-    Devuelve:
-
-    [
-        {
-            "level": "ok" | "warning" | "error",
-            "object": "...",
-            "rule": "...",
-            "message": "..."
-        }
-    ]
+    Devuelve un resultado por regla, no un resultado
+    por cada objeto STIX.
     """
 
-    # --------------------------------------------------------
-    # Permitir recibir JSON como string
-    # --------------------------------------------------------
+    # ========================================================
+    # Permitir JSON como texto
+    # ========================================================
 
     if isinstance(payload, str):
 
         try:
+
             payload = json.loads(payload)
 
         except json.JSONDecodeError:
@@ -507,9 +553,10 @@ def run_quality_checks(payload):
                 "object": "JSON",
                 "rule": "JSON",
                 "message": (
-                    "No fue posible ejecutar las reglas "
-                    "de calidad porque el JSON es inválido."
+                    "No fue posible ejecutar las reglas de calidad "
+                    "porque el JSON es inválido."
                 ),
+                "affected": [],
             }]
 
     if not isinstance(payload, dict):
@@ -517,20 +564,20 @@ def run_quality_checks(payload):
         return [{
             "level": "error",
             "object": "STIX",
-            "rule": "estructura",
+            "rule": "Estructura",
             "message": (
                 "El contenido recibido no corresponde "
                 "a un objeto JSON válido."
             ),
+            "affected": [],
         }]
-
-    results = []
 
     objects = _objects(payload)
 
+    results = []
+
     # ========================================================
     # SP-1
-    # SEVERITY GLOBAL
     # ========================================================
 
     results.extend(
@@ -541,26 +588,33 @@ def run_quality_checks(payload):
     )
 
     # ========================================================
-    # REGLAS POR OBJETO
+    # SP-2 NAME
     # ========================================================
 
-    for obj in objects:
-
-        # ----------------------------------------------------
-        # SP-2
-        # NAME + DESCRIPTION
-        # ----------------------------------------------------
-
-        results.extend(
-            _validate_name_description(obj)
+    results.extend(
+        _validate_name_grouped(
+            objects
         )
+    )
 
-        # ----------------------------------------------------
-        # CONFIDENCE
-        # ----------------------------------------------------
+    # ========================================================
+    # SP-2 DESCRIPTION
+    # ========================================================
 
-        results.extend(
-            _validate_confidence(obj)
+    results.extend(
+        _validate_description_grouped(
+            objects
         )
+    )
+
+    # ========================================================
+    # CONFIDENCE
+    # ========================================================
+
+    results.extend(
+        _validate_confidence_grouped(
+            objects
+        )
+    )
 
     return results
