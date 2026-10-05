@@ -1,49 +1,94 @@
 import json
 from stix2validator import validate_string
 
-
 def _format_issue(issue):
     if hasattr(issue, "message"):
         return str(issue.message)
     return str(issue)
 
-
 def validate_stix_text(text: str):
-    response = {"json_ok": False, "stix_ok": False, "errors": [], "warnings": [], "data": None}
+    response = {
+        "json_ok": False,
+        "stix_ok": False,
+        "errors": [],
+        "warnings": [],
+        "data": None
+    }
 
+    # =========================================================
+    # JSON
+    # =========================================================
     try:
         data = json.loads(text)
+
         response["json_ok"] = True
         response["data"] = data
+
     except json.JSONDecodeError as exc:
-        response["errors"].append(f"JSON inválido: línea {exc.lineno}, columna {exc.colno}: {exc.msg}")
+
+        response["errors"].append(
+            f"JSON inválido: línea {exc.lineno}, "
+            f"columna {exc.colno}: {exc.msg}"
+        )
+
         return response
 
+    # =========================================================
+    # STIX
+    # =========================================================
     try:
+
         results = validate_string(text)
-        response["stix_ok"] = bool(results.is_valid)
 
-        fatal = getattr(results, "fatal", None)
-        if fatal:
-            response["errors"].append(_format_issue(fatal))
+        # Normalizar resultado
+        if isinstance(results, list):
+            result_list = results
+        else:
+            result_list = [results]
 
-        for obj_result in getattr(results, "object_results", []) or []:
-            obj_id = getattr(obj_result, "object_id", "objeto") or "objeto"
-            for error in getattr(obj_result, "errors", []) or []:
-                response["errors"].append(f"{obj_id}: {_format_issue(error)}")
-            for warning in getattr(obj_result, "warnings", []) or []:
-                response["warnings"].append(f"{obj_id}: {_format_issue(warning)}")
+        all_valid = True
 
-        # Some validator result variants may expose a single object_result.
-        single = getattr(results, "object_result", None)
-        if single and not getattr(results, "object_results", None):
-            obj_id = getattr(single, "object_id", "objeto") or "objeto"
-            for error in getattr(single, "errors", []) or []:
-                response["errors"].append(f"{obj_id}: {_format_issue(error)}")
-            for warning in getattr(single, "warnings", []) or []:
-                response["warnings"].append(f"{obj_id}: {_format_issue(warning)}")
+        for result in result_list:
+
+            if not getattr(result, "is_valid", False):
+                all_valid = False
+
+            obj_id = (
+                getattr(result, "object_id", None)
+                or "objeto"
+            )
+
+            # Errores
+            for error in getattr(result, "errors", []) or []:
+
+                response["errors"].append(
+                    f"{obj_id}: {_format_issue(error)}"
+                )
+
+            # Advertencias
+            for warning in getattr(result, "warnings", []) or []:
+
+                response["warnings"].append(
+                    f"{obj_id}: {_format_issue(warning)}"
+                )
+
+            # Error fatal
+            fatal_error = getattr(result, "error", None)
+
+            if fatal_error:
+
+                response["errors"].append(
+                    f"{obj_id}: {fatal_error}"
+                )
+
+                all_valid = False
+
+        response["stix_ok"] = all_valid
 
     except Exception as exc:
-        response["errors"].append(f"No fue posible completar la validación STIX: {exc}")
+
+        response["errors"].append(
+            f"No fue posible completar la validación STIX: {exc}"
+        )
 
     return response
