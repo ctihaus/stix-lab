@@ -1,5 +1,11 @@
 import json
 import streamlit as st
+from services.ai_converter import (
+    analyze_log_with_ai,
+    get_ai_usage,
+    AIConverterError,
+    AIRateLimitError,
+)
 
 from data.wiki_content import (
     COMMON_PROPERTIES_BY_FAMILY,
@@ -572,17 +578,19 @@ with converter_tab:
     )
 
     st.caption(
-        "Extrae indicadores de un log o crea "
-        "un indicador manualmente y genera STIX 2.1."
+        "Extrae indicadores de un log, crea un indicador manualmente "
+        "o utiliza IA para interpretar eventos y generar STIX 2.1."
     )
 
     mode = st.segmented_control(
         "Modo",
-        [
-            "Log → STIX",
-            "Constructor manual",
-        ],
+    [
+        "Log → STIX",
+        "Constructor manual",
+        "✨ AI Converter",
+    ],
         default="Log → STIX",
+        key="converter_mode",
     )
 
     # ========================================================
@@ -776,7 +784,7 @@ with converter_tab:
     # CONSTRUCTOR MANUAL
     # ========================================================
 
-    else:
+    elif mode == "Constructor manual":
 
         c1, c2 = st.columns(
             2,
@@ -1003,6 +1011,571 @@ with converter_tab:
                     "Completa el formulario y "
                     "genera un objeto para verlo aquí."
                 )
+
+    # ========================================================
+    # AI CONVERTER
+    # ========================================================
+
+    elif mode == "✨ AI Converter":
+
+        st.markdown("### ✨ AI Converter")
+
+        st.caption(
+            "Utiliza un modelo de lenguaje de pesos abiertos alojado en "
+            "Cloudflare Workers AI para interpretar logs, identificar "
+            "indicadores y convertir el resultado a STIX 2.1."
+        )
+
+        st.info(
+            "La IA se utiliza para interpretar y extraer contexto. "
+            "La construcción final de STIX continúa realizándose con "
+            "las funciones determinísticas de STIX Lab."
+        )
+
+        # ----------------------------------------------------
+        # CONFIGURACIÓN DEL WORKER
+        # ----------------------------------------------------
+
+        try:
+            worker_url = st.secrets["AI_WORKER_URL"]
+            worker_secret = st.secrets["AI_WORKER_SECRET"]
+            ai_configured = True
+
+        except KeyError:
+            worker_url = None
+            worker_secret = None
+            ai_configured = False
+
+        if not ai_configured:
+
+            st.error(
+                "AI Converter no está configurado. Agrega "
+                "`AI_WORKER_URL` y `AI_WORKER_SECRET` en los "
+                "Secrets de Streamlit."
+            )
+
+        else:
+
+            # =================================================
+            # CONTADOR GLOBAL DE USO
+            # =================================================
+
+            usage = None
+            usage_error = None
+
+            try:
+                usage = get_ai_usage(
+                    worker_url,
+                    worker_secret,
+                )
+
+            except AIConverterError as exc:
+                usage_error = str(exc)
+
+            if usage_error:
+                st.warning(
+                    "No fue posible consultar el contador global de IA: "
+                    f"{usage_error}"
+                )
+
+            if usage:
+
+                used = int(
+                    usage.get("used", 0)
+                )
+
+                remaining = int(
+                    usage.get("remaining", 0)
+                )
+
+                daily_limit = int(
+                    usage.get("limit", 0)
+                )
+
+                usage_date = usage.get(
+                    "date",
+                    "",
+                )
+
+                u1, u2, u3 = st.columns(3)
+
+                u1.metric(
+                    "Solicitudes utilizadas",
+                    used,
+                )
+
+                u2.metric(
+                    "Solicitudes restantes",
+                    remaining,
+                )
+
+                u3.metric(
+                    "Límite diario",
+                    daily_limit,
+                )
+
+                if daily_limit > 0:
+                    st.progress(
+                        min(
+                            used / daily_limit,
+                            1.0,
+                        )
+                    )
+
+                if usage_date:
+                    st.caption(
+                        f"Cuota global correspondiente a {usage_date}. "
+                        "El contador se reinicia diariamente a las "
+                        "00:00 UTC."
+                    )
+                else:
+                    st.caption(
+                        "El contador es global para todos los usuarios "
+                        "y se reinicia diariamente a las 00:00 UTC."
+                    )
+
+            else:
+                # Si no se pudo consultar la cuota, dejamos el botón
+                # disponible. El Worker seguirá aplicando el límite real.
+                remaining = None
+                daily_limit = None
+
+            st.divider()
+
+            # =================================================
+            # ENTRADA DEL LOG
+            # =================================================
+
+            ai_sample = (
+                "2026-10-20 14:20:13 event=firewall action=blocked\\n"
+                "src_ip=10.10.4.25 dst_ip=185.234.72.15\\n"
+                "url=hxxp://malicious-example[.]com/login\\n"
+                "sha256="
+                "7600ffe12da441fe89d035b13801e8e91"
+                "d064bc544a27b19a5cf49f6ab8b18f5\\n"
+                "message=Multiple outbound connections were blocked."
+            )
+
+            ai_log = st.text_area(
+                "Log, alerta o evento",
+                value=ai_sample,
+                height=220,
+                key="ai_log",
+            )
+
+            MAX_AI_LOG_CHARS = 8000
+
+            char_count = len(ai_log)
+
+            st.caption(
+                f"{char_count:,} / "
+                f"{MAX_AI_LOG_CHARS:,} caracteres"
+            )
+
+            log_too_large = (
+                char_count > MAX_AI_LOG_CHARS
+            )
+
+            if log_too_large:
+                st.error(
+                    "El contenido supera el tamaño máximo permitido "
+                    f"de {MAX_AI_LOG_CHARS:,} caracteres."
+                )
+
+            limit_reached = (
+                remaining is not None
+                and remaining <= 0
+            )
+
+            if limit_reached:
+                st.warning(
+                    "Se alcanzó el límite global de análisis con IA "
+                    "para hoy."
+                )
+
+            analyze_button = st.button(
+                "✨ Analizar con IA",
+                type="primary",
+                key="ai_analyze_button",
+                disabled=(
+                    log_too_large
+                    or limit_reached
+                    or not ai_log.strip()
+                ),
+            )
+
+            # =================================================
+            # LLAMADA AL WORKER
+            # =================================================
+
+            if analyze_button:
+
+                # Eliminar un análisis anterior para no confundirlo
+                # con una solicitud nueva que pueda fallar.
+                st.session_state.pop(
+                    "ai_analysis",
+                    None,
+                )
+
+                try:
+
+                    with st.spinner(
+                        "Analizando el evento con IA..."
+                    ):
+                        ai_response = analyze_log_with_ai(
+                            ai_log,
+                            worker_url,
+                            worker_secret,
+                        )
+
+                    st.session_state[
+                        "ai_analysis"
+                    ] = ai_response.get(
+                        "analysis",
+                        {},
+                    )
+
+                    st.session_state[
+                        "ai_usage"
+                    ] = ai_response.get(
+                        "usage",
+                        {},
+                    )
+
+                    st.success(
+                        "Análisis completado correctamente."
+                    )
+
+                    # Fuerza un rerun para que el contador superior
+                    # consulte nuevamente D1 y refleje el nuevo consumo.
+                    st.rerun()
+
+                except AIRateLimitError as exc:
+
+                    st.error(
+                        "Se alcanzó el límite diario de análisis con IA."
+                    )
+
+                    if getattr(exc, "usage", None):
+                        st.session_state[
+                            "ai_usage"
+                        ] = exc.usage
+
+                except AIConverterError as exc:
+
+                    st.error(
+                        f"No fue posible completar el análisis: {exc}"
+                    )
+
+                except Exception as exc:
+
+                    st.error(
+                        "Ocurrió un error inesperado durante el análisis: "
+                        f"{exc}"
+                    )
+
+            # =================================================
+            # RESULTADO DEL ANÁLISIS
+            # =================================================
+
+            analysis = st.session_state.get(
+                "ai_analysis"
+            )
+
+            if analysis:
+
+                st.divider()
+
+                st.markdown(
+                    "### Resultado del análisis"
+                )
+
+                summary = analysis.get(
+                    "summary",
+                    "",
+                )
+
+                if summary:
+                    st.markdown("**Resumen**")
+                    st.write(summary)
+
+                a1, a2 = st.columns(2)
+
+                with a1:
+                    st.metric(
+                        "Severidad sugerida",
+                        analysis.get(
+                            "severity",
+                            "-",
+                        ),
+                    )
+
+                with a2:
+                    st.metric(
+                        "Confidence",
+                        analysis.get(
+                            "confidence",
+                            "-",
+                        ),
+                    )
+
+                indicators_found = analysis.get(
+                    "indicators",
+                    [],
+                )
+
+                st.markdown(
+                    "### Indicadores identificados"
+                )
+
+                if not indicators_found:
+
+                    st.info(
+                        "El modelo no identificó indicadores "
+                        "en la muestra."
+                    )
+
+                else:
+
+                    selected_ai_indicators = []
+
+                    for i, indicator in enumerate(
+                        indicators_found
+                    ):
+
+                        ai_type = str(
+                            indicator.get(
+                                "type",
+                                "",
+                            )
+                        ).strip()
+
+                        ai_value = str(
+                            indicator.get(
+                                "value",
+                                "",
+                            )
+                        ).strip()
+
+                        ai_description = str(
+                            indicator.get(
+                                "description",
+                                "",
+                            )
+                        ).strip()
+
+                        # Validación determinística adicional de la
+                        # salida del LLM antes de generar STIX.
+                        detected_type, normalized_value = (
+                            detect_indicator(ai_value)
+                            if ai_value
+                            else (None, "")
+                        )
+
+                        indicator_is_valid = (
+                            detected_type is not None
+                        )
+
+                        type_matches = (
+                            indicator_is_valid
+                            and detected_type == ai_type
+                        )
+
+                        cols = st.columns(
+                            [.45, 1.1, 3.1, 4]
+                        )
+
+                        with cols[0]:
+
+                            enabled = st.checkbox(
+                                "Usar",
+                                value=(
+                                    indicator_is_valid
+                                ),
+                                key=f"ai_ioc_{i}",
+                                label_visibility="collapsed",
+                                disabled=(
+                                    not indicator_is_valid
+                                ),
+                            )
+
+                        with cols[1]:
+                            st.code(
+                                ai_type,
+                                language=None,
+                            )
+
+                        with cols[2]:
+                            st.code(
+                                ai_value,
+                                language=None,
+                            )
+
+                        with cols[3]:
+                            st.caption(
+                                ai_description
+                                or "Sin descripción."
+                            )
+
+                            if not indicator_is_valid:
+                                st.error(
+                                    "Formato no reconocido por "
+                                    "el convertidor determinístico."
+                                )
+
+                            elif not type_matches:
+                                st.warning(
+                                    "La IA lo clasificó como "
+                                    f"{ai_type}, pero STIX Lab "
+                                    f"detecta {detected_type}. "
+                                    "Se usará la clasificación "
+                                    "determinística."
+                                )
+
+                        if enabled and indicator_is_valid:
+
+                            selected_ai_indicators.append(
+                                {
+                                    "type": detected_type,
+                                    "value": (
+                                        normalized_value
+                                        or ai_value
+                                    ),
+                                    "description": (
+                                        ai_description
+                                        or (
+                                            "Indicador identificado "
+                                            "mediante análisis "
+                                            "asistido por IA."
+                                        )
+                                    ),
+                                }
+                            )
+
+                    # =========================================
+                    # GENERAR STIX
+                    # =========================================
+
+                    if selected_ai_indicators:
+
+                        st.markdown(
+                            "### Generar STIX"
+                        )
+
+                        st.caption(
+                            "Solo los indicadores seleccionados y "
+                            "validados por las reglas determinísticas "
+                            "de STIX Lab serán incluidos."
+                        )
+
+                        if st.button(
+                            "Generar STIX desde análisis IA",
+                            type="primary",
+                            key="generate_ai_stix",
+                        ):
+
+                            try:
+
+                                stix_indicators = []
+
+                                ai_confidence = int(
+                                    analysis.get(
+                                        "confidence",
+                                        50,
+                                    )
+                                )
+
+                                ai_confidence = max(
+                                    0,
+                                    min(
+                                        ai_confidence,
+                                        100,
+                                    ),
+                                )
+
+                                ai_severity = analysis.get(
+                                    "severity",
+                                    "Medium",
+                                )
+
+                                if ai_severity not in {
+                                    "Medium",
+                                    "High",
+                                    "Critical",
+                                }:
+                                    ai_severity = "Medium"
+
+                                for item in selected_ai_indicators:
+
+                                    stix_indicators.append(
+                                        make_indicator(
+                                            indicator_type=item[
+                                                "type"
+                                            ],
+                                            value=item[
+                                                "value"
+                                            ],
+                                            name=(
+                                                f"Indicador "
+                                                f"{item['type']}: "
+                                                f"{item['value'][:60]}"
+                                            ),
+                                            description=item[
+                                                "description"
+                                            ],
+                                            confidence=ai_confidence,
+                                            severity=ai_severity,
+                                        )
+                                    )
+
+                                bundle = make_bundle(
+                                    stix_indicators
+                                )
+
+                                payload = json.dumps(
+                                    bundle,
+                                    indent=2,
+                                    ensure_ascii=False,
+                                )
+
+                                st.session_state[
+                                    "generated_stix"
+                                ] = payload
+
+                                st.success(
+                                    "Bundle generado con "
+                                    f"{len(stix_indicators)} "
+                                    "indicador(es)."
+                                )
+
+                                st.code(
+                                    payload,
+                                    language="json",
+                                )
+
+                                st.download_button(
+                                    "Descargar STIX",
+                                    payload,
+                                    file_name=(
+                                        "ai_stix_bundle.json"
+                                    ),
+                                    mime="application/json",
+                                    key="download_ai_stix",
+                                )
+
+                            except Exception as exc:
+
+                                st.error(
+                                    "No fue posible generar el "
+                                    f"STIX: {exc}"
+                                )
+
+                    else:
+
+                        st.warning(
+                            "No hay indicadores válidos "
+                            "seleccionados para generar STIX."
+                        )
 
 
 # ============================================================
