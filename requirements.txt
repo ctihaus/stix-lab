@@ -1,3 +1,4 @@
 streamlit==1.64.0
 stix2
 stix2-validator==3.2.0
+requests
