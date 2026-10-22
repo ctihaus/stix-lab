@@ -1051,8 +1051,8 @@ with converter_tab:
         st.markdown("### ✨ Convertidor IA")
 
         st.caption(
-            "Utiliza un modelo de lenguaje de pesos abiertos alojado en "
-            "Cloudflare Workers AI para interpretar logs, identificar "
+            "Utiliza un modelo de lenguaje LLM "
+            "para interpretar logs, identificar "
             "indicadores y convertir el resultado a STIX 2.1."
         )
 
