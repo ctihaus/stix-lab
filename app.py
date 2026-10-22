@@ -1163,7 +1163,7 @@ with converter_tab:
                 key="ai_log",
             )
 
-            MAX_AI_LOG_CHARS = 8000
+            MAX_AI_LOG_CHARS = 12000
 
             char_count = len(ai_log)
 
