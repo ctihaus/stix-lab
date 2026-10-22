@@ -1,5 +1,6 @@
 import json
 import streamlit as st
+from pathlib import Path
 from services.ai_converter import (
     analyze_log_with_ai,
     get_ai_usage,
@@ -159,6 +160,35 @@ def render_properties(rows, required):
         use_container_width=True,
         hide_index=True,
     )
+
+# ============================================================
+# ARCHIVOS DE EJEMPLO
+# ============================================================
+BASE_DIR = Path(__file__).resolve().parent
+
+AI_SAMPLE_PATH = (
+    BASE_DIR
+    / "data"
+    / "ai_sample_log.txt"
+)
+
+
+@st.cache_data
+def load_ai_sample() -> str:
+
+    try:
+
+        return AI_SAMPLE_PATH.read_text(
+            encoding="utf-8"
+        )
+
+    except FileNotFoundError:
+
+        return ""
+
+    except Exception:
+
+        return ""
 
 
 def update_manual_defaults():
@@ -1018,7 +1048,7 @@ with converter_tab:
 
     elif mode == "✨ AI Converter":
 
-        st.markdown("### ✨ AI Converter")
+        st.markdown("### ✨ Convertidor IA")
 
         st.caption(
             "Utiliza un modelo de lenguaje de pesos abiertos alojado en "
@@ -1145,21 +1175,19 @@ with converter_tab:
             # =================================================
             # ENTRADA DEL LOG
             # =================================================
+            ai_sample = load_ai_sample()
 
-            ai_sample = (
-                "2026-10-20 14:20:13 event=firewall action=blocked\\n"
-                "src_ip=10.10.4.25 dst_ip=185.234.72.15\\n"
-                "url=hxxp://malicious-example[.]com/login\\n"
-                "sha256="
-                "7600ffe12da441fe89d035b13801e8e91"
-                "d064bc544a27b19a5cf49f6ab8b18f5\\n"
-                "message=Multiple outbound connections were blocked."
-            )
-
+            if not ai_sample:
+            
+                st.warning(
+                    "No se pudo cargar el archivo "
+                    "data/ai_sample_log.txt."
+                )
+            
             ai_log = st.text_area(
                 "Log, alerta o evento",
                 value=ai_sample,
-                height=220,
+                height=300,
                 key="ai_log",
             )
 
