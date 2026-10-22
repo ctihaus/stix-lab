@@ -617,7 +617,7 @@ with converter_tab:
     [
         "Log → STIX",
         "Constructor manual",
-        "✨ AI Converter",
+        "✨ Convertidor IA",
     ],
         default="Log → STIX",
         key="converter_mode",
@@ -1046,7 +1046,7 @@ with converter_tab:
     # AI CONVERTER
     # ========================================================
 
-    elif mode == "✨ AI Converter":
+    elif mode == "✨ Convertidor IA":
 
         st.markdown("### ✨ Convertidor IA")
 
@@ -1079,7 +1079,7 @@ with converter_tab:
         if not ai_configured:
 
             st.error(
-                "AI Converter no está configurado. Agrega "
+                "Convertidor IA no está configurado. Agrega "
                 "`AI_WORKER_URL` y `AI_WORKER_SECRET` en los "
                 "Secrets de Streamlit."
             )
